@@ -71,6 +71,9 @@ def analyze_headers(url):
         dict: A dictionary containing the analysis results.
     """
     try:
+        # requests follows redirects, and only the final response headers
+        # are judged. A redirector that sends no security headers and lands
+        # on a hardened page reports as hardened, and the reverse as well.
         response = requests.get(url, timeout=10) # Added timeout for requests
         # Any completed HTTP response is analyzed, including 404 and 500.
         # Exit 1 in main is reserved for connection and protocol failures,
@@ -106,9 +109,15 @@ def is_valid_header_value(header, value):
     text = str(value).strip()
     if header == "X-Frame-Options":
         upper = text.upper()
+        # ALLOW-FROM counts as valid here even though current browsers
+        # ignore it. A page relying on it reports as correctly configured
+        # while modern framing protection is absent.
         return upper in ("DENY", "SAMEORIGIN") or upper.startswith("ALLOW-FROM ")
     if header == "Strict-Transport-Security":
         match = re.search(r'max-age\s*=\s*(\d+)', text, re.IGNORECASE)
+        # Any positive max-age passes, including max-age=1. I check that the
+        # directive is well formed, not that it is anywhere near the one year
+        # figure the recommendation text quotes.
         return match is not None and int(match.group(1)) > 0
     if header == "Content-Security-Policy":
         return len(text) > 0
@@ -151,6 +160,9 @@ def report_header_status(headers):
             print(f"    - Remediation: {recommendation['remediation']}")
     print("\nDetailed Headers:")
     for header, value in headers.items():
+        # Set-Cookie is the only value masked in the detailed dump. Any other
+        # header the server chose to send, including tokens in custom
+        # headers, prints in clear below.
         if header.lower() == "set-cookie":
             print(f"  {header}: [MASKED]")
         else:
@@ -175,6 +187,9 @@ def main():
 
     headers = analyze_headers(url)
 
+    # headers is a dict of the response headers, so this tests emptiness
+    # as well as failure. A reachable server that answers with no headers
+    # at all takes the failure exit, with a message blaming the URL.
     if headers:
         report_header_status(headers)
     else:
