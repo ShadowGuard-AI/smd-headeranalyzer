@@ -11,5 +11,9 @@ Analyzes HTTP response headers for common security misconfigurations like missin
 - `-h`: Show help message and exit
 - `-v`: Enable verbose output for debugging.
 
+## Authorized use
+
+Use this tool only on targets you are authorized to test. Headers are analyzed for any completed HTTP response, including 404 and 500 responses; exit status 1 is reserved for connection and protocol failures. In the detailed header dump, Set-Cookie values are masked and never printed in clear.
+
 ## License
 Copyright (c) ShadowStrikeHQ

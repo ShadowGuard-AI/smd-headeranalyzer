@@ -2,6 +2,7 @@
 
 import argparse
 import logging
+import re
 import requests
 import sys
 
@@ -71,7 +72,9 @@ def analyze_headers(url):
     """
     try:
         response = requests.get(url, timeout=10) # Added timeout for requests
-        response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
+        # Any completed HTTP response is analyzed, including 404 and 500.
+        # Exit 1 in main is reserved for connection and protocol failures,
+        # which arrive here as RequestException and return None.
         headers = response.headers
         return headers
     except requests.exceptions.RequestException as e:
@@ -94,6 +97,34 @@ def validate_url(url):
         return False
     return True
 
+def is_valid_header_value(header, value):
+    """
+    Checks a header value against the valid forms for that header.
+    The stored recommendation text is guidance only and is never used
+    as the comparison target.
+    """
+    text = str(value).strip()
+    if header == "X-Frame-Options":
+        upper = text.upper()
+        return upper in ("DENY", "SAMEORIGIN") or upper.startswith("ALLOW-FROM ")
+    if header == "Strict-Transport-Security":
+        match = re.search(r'max-age\s*=\s*(\d+)', text, re.IGNORECASE)
+        return match is not None and int(match.group(1)) > 0
+    if header == "Content-Security-Policy":
+        return len(text) > 0
+    if header == "X-Content-Type-Options":
+        return text.lower() == "nosniff"
+    if header == "Referrer-Policy":
+        return text.lower() in (
+            "no-referrer", "no-referrer-when-downgrade", "origin",
+            "origin-when-cross-origin", "same-origin", "strict-origin",
+            "strict-origin-when-cross-origin", "unsafe-url",
+        )
+    # Guidance-only headers (for example Permissions-Policy): a non empty
+    # value is reported, not graded against placeholder text.
+    return len(text) > 0
+
+
 def report_header_status(headers):
     """
     Reports the status of security headers based on the provided headers and recommendations.
@@ -109,11 +140,10 @@ def report_header_status(headers):
     for header, recommendation in SECURITY_HEADER_RECOMMENDATIONS.items():
         if header in headers:
             print(f"  {header}: Present")
-            if recommendation["value"] != "Define a policy tailored to your application's needs":
-                if headers[header] != recommendation["value"]:
-                    print(f"    - Value Mismatch: Expected '{recommendation['value']}', found '{headers[header]}'")
+            if is_valid_header_value(header, headers[header]):
+                print(f"    - Value: {headers[header]}")
             else:
-                 print(f"    - Value: {headers[header]}")
+                print(f"    - Value Mismatch: Guidance '{recommendation['value']}', found '{headers[header]}'")
 
         else:
             print(f"  {header}: Missing")
@@ -121,7 +151,10 @@ def report_header_status(headers):
             print(f"    - Remediation: {recommendation['remediation']}")
     print("\nDetailed Headers:")
     for header, value in headers.items():
-        print(f"  {header}: {value}")
+        if header.lower() == "set-cookie":
+            print(f"  {header}: [MASKED]")
+        else:
+            print(f"  {header}: {value}")
 
 
 def main():
