@@ -187,10 +187,7 @@ def main():
 
     headers = analyze_headers(url)
 
-    # headers is a dict of the response headers, so this tests emptiness
-    # as well as failure. A reachable server that answers with no headers
-    # at all takes the failure exit, with a message blaming the URL.
-    if headers:
+    if headers is not None:
         report_header_status(headers)
     else:
         logging.error("Failed to analyze headers.  Check URL or network.")
